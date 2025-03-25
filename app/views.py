@@ -22,12 +22,20 @@ def get_rss():
   response = requests.get(url, headers={"Authorization": "Bearer " + token})
   rss_items = []
   for items in response.json()['items']:
+    itunes_item = iTunesItem(
+      author = items['story']['author']['author_content']['firstname'] + ' ' + items['story']['author']['author_content']['lastname'],
+      image = 'https://uusijuttu.imgix.net/' + items['story']['social_image']['image']['url'],
+      duration = items['story']['audio_length'],
+      subtitle = items['story']['subhead'],
+      summary = items['story']['story_content']['content'].get('audio_description', '')
+    )
     rss_items.append(Item(
       title = (items['story']['series_id'] or items['story']['story_content']['meta']['type']) + ': ' + items['story']['title'],
       enclosure = Enclosure(url=items['story']['story_content']['meta']['audioFiles'][0], length=items['story']['audio_length'], type='audio/mpeg'),
       pubDate = datetime.datetime.fromisoformat(items['story']['published_at']),
-      description = items['story']['story_content']['content'].get('audio_description', ''),
-      author = items['story']['author']['author_content']['firstname'] + ' ' + items['story']['author']['author_content']['lastname']
+      description = items['story']['story_content']['content'].get('audio_description', items['story']['story_content']['content'].get('socialDescription', '')),
+      author = items['story']['author']['author_content']['firstname'] + ' ' + items['story']['author']['author_content']['lastname'],
+      extensions = [itunes_item]
     ))
 
   feed = Feed(

@@ -1,6 +1,6 @@
 # coding: utf-8
 
-from flask import make_response
+from flask import make_response, request
 from app import app
 import os
 import datetime
@@ -9,8 +9,16 @@ from rfeed import *
 
 @app.route('/rss', methods=['GET'])
 def get_rss():
+  url = 'https://db.uusijuttu.fi/auth/v1/token?grant_type=password'
+  json = {
+    'email': request.args.get('username'),
+    'password': request.args.get('password'),
+    'gotrue_meta_security': {}
+  }
+  response = requests.post(url, json=json, headers={"apikey": os.environ['APIKEY'], "Content-Type": "application/json;charset=UTF-8"})
+  token = response.json()['access_token']
+
   url = 'https://api.uusijuttu.fi/api/v2/discover/items?include_helicopter=1'
-  token = os.environ['TOKEN']
   response = requests.get(url, headers={"Authorization": "Bearer " + token})
   rss_items = []
   for items in response.json()['items']:

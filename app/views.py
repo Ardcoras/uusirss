@@ -23,10 +23,11 @@ def get_rss():
   rss_items = []
   for items in response.json()['items']:
     rss_items.append(Item(
-      title = items['story']['title'],
+      title = items['story']['story_content']['meta'] + ': ' + items['story']['title'],
       enclosure = Enclosure(url=items['story']['story_content']['meta']['audioFiles'][0], length=items['story']['audio_length'], type='audio/mpeg'),
       pubDate = datetime.datetime.fromisoformat(items['story']['published_at']),
-      description = items['story']['story_content']['content'].get('audio_description', '')
+      description = items['story']['story_content']['content'].get('audio_description', ''),
+      author = items['story']['author']['author_content']['firstname'] + ' ' + items['story']['author']['author_content']['lastname']
     ))
 
   feed = Feed(

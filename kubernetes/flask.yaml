@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: uusirss
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flask
+  namespace: uusirss
+  labels:
+    app: flask
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      nodePort: 30781
+  selector:
+    app: flask
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: flask-set
+  namespace: uusirss
+spec:
+  selector:
+    matchLabels:
+      app: flask
+  serviceName: flask
+  replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+#    rollingUpdate:
+#      maxUnavailable: 0
+#      maxSurge: 1
+  template:
+    metadata:
+      namespace: uusirss
+      labels:
+        app: flask
+    spec:
+      imagePullSecrets:
+        - name: regcred
+      containers:
+        - image: ghcr.io/ardcoras/uusirss:master
+          name: flask
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 30781
+              name: flask
+          env:
+#            - name: SMTP_HOST
+#              value: 'mail.ardcoras.fi'
+#            - name: SMTP_USER
+#              valueFrom:
+#                secretKeyRef:
+#                  name: smtp
+#                  key: user
+#            - name: SMTP_PASSWORD
+#              valueFrom:
+#                secretKeyRef:
+#                  name: smtp
+#                  key: password
+            - name: SECRET_KEY
+              value: ''
+#              valueFrom:
+#                secretKeyRef:
+#                  name: hash-salt
+#                  key: hash_salt
+#          readinessProbe:
+#            initialDelaySeconds: 1
+#            periodSeconds: 15
+#            timeoutSeconds: 5
+#            successThreshold: 2
+#            failureThreshold: 2
+#            httpGet:
+#              host:
+#              scheme: HTTP
+#              path: /
+#              httpHeaders:
+#              - name: Host
+#                value: uusirss.ardcoras.fi
+#              port: 80
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: flask-route
+  namespace: uusirss
+spec:
+  entryPoints:
+    - websecure
+    - web
+  routes:
+    - match: Host(`uusirss.ardcoras.fi`)
+      kind: Rule
+      middlewares:
+        - name: headers-default@file
+      services:
+        - name: flask
+          port: 80

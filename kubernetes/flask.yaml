@@ -14,7 +14,7 @@ spec:
   type: NodePort
   ports:
     - port: 80
-      nodePort: 30781
+      nodePort: 30782
   selector:
     app: flask
 ---
@@ -47,7 +47,7 @@ spec:
           name: flask
           imagePullPolicy: Always
           ports:
-            - containerPort: 30781
+            - containerPort: 30782
               name: flask
           env:
 #            - name: SMTP_HOST

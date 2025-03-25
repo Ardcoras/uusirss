@@ -9,15 +9,17 @@ from rfeed import *
 
 @app.route('/rss', methods=['GET'])
 def get_rss():
-  url = 'https://api.uusijuttu.fi/api/v2/discover/items'
+  url = 'https://api.uusijuttu.fi/api/v2/discover/items?include_helicopter=1'
   token = os.environ['TOKEN']
   response = requests.get(url, headers={"Authorization": "Bearer " + token})
   rss_items = []
   for items in response.json()['items']:
     rss_items.append(Item(
       title = items['story']['title'],
-      link = items['story']['story_content']['meta']['audioFiles'][0],
-      pubDate = datetime.datetime.fromisoformat(items['story']['published_at'])))
+      enclosure = Enclosure(url=items['story']['story_content']['meta']['audioFiles'][0], length=items['story']['audio_length'], type='audio/mpeg'),
+      pubDate = datetime.datetime.fromisoformat(items['story']['published_at']),
+      description = items['story']['story_content']['content'].get('audio_description', '')
+    ))
 
   feed = Feed(
     title = 'Uusijuttu.fi RSS',

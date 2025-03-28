@@ -22,8 +22,11 @@ def get_rss():
   response = requests.get(url, headers={"Authorization": "Bearer " + token})
   rss_items = []
   for items in response.json()['items']:
+    if 'story' not in items or items['story'] is None:
+      continue
+    author = items['story']['author']['author_content']['firstname'] + ' ' + items['story']['author']['author_content']['lastname']
     itunes_item = iTunesItem(
-      author = items['story']['author']['author_content']['firstname'] + ' ' + items['story']['author']['author_content']['lastname'],
+      author = author,
       image = 'https://uusijuttu.imgix.net/' + items['story']['social_image']['image']['url'],
       duration = items['story']['audio_length'],
       subtitle = items['story']['subhead'],
@@ -34,7 +37,7 @@ def get_rss():
       enclosure = Enclosure(url=items['story']['story_content']['meta']['audioFiles'][0], length=items['story']['audio_length'], type='audio/mpeg'),
       pubDate = datetime.datetime.fromisoformat(items['story']['published_at']),
       description = items['story']['story_content']['content'].get('audio_description', items['story']['story_content']['content'].get('socialDescription', '')),
-      author = items['story']['author']['author_content']['firstname'] + ' ' + items['story']['author']['author_content']['lastname'],
+      author = author,
       extensions = [itunes_item]
     ))
 

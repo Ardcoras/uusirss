@@ -27,7 +27,7 @@ def get_rss():
     author = items['story']['author']['author_content']['firstname'] + ' ' + items['story']['author']['author_content']['lastname']
     itunes_item = iTunesItem(
       author = author,
-      image = 'https://uusijuttu.imgix.net/' + items['story']['social_image']['image']['url'] if 'social_image' in items['story'] else '',
+      image = 'https://uusijuttu.imgix.net/' + items['story']['social_image']['image']['url'] if items['story']['social_image'] else '',
       duration = items['story']['audio_length'],
       subtitle = items['story']['subhead'],
       summary = items['story']['story_content']['content'].get('audio_description', '')

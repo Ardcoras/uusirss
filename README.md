@@ -13,8 +13,11 @@ URL and the generated feed private: they contain your credentials.
 The Longplay feed discovers articles from <https://www.longplay.fi/feed.xml>,
 signs in to Longplay, and resolves recordings using that account's user ID.
 Only articles with audio accessible to the account are included. Article
-titles, links, GUIDs, descriptions and publication dates are retained; cover
-images become podcast artwork and recordings become MP3 enclosures. New
+titles, links, GUIDs and publication dates are retained. Descriptions use the
+article's introductory paragraphs from the existing article-index API requests,
+falling back to the original RSS description. Plain-text podcast summaries are
+also included. This adds no individual article page requests. Cover images
+become podcast artwork and recordings become MP3 enclosures. New
 articles appear when the player refreshes the feed, within the upstream feed's
 article window.
 

@@ -48,6 +48,7 @@ class LongplayFeedTests(unittest.TestCase):
                              'LP%20168_Meit%C3%A4%20Ei_Luotu_Sotimaan.mp3'
                              '?Expires=1&KeyName=lp-live-bucket&Signature=expired',
                        'size': 123456}]
+        self.article_text = None
         self.session.get.side_effect = self.get_upstream
 
     def get_upstream(self, url, **kwargs):
@@ -64,7 +65,8 @@ class LongplayFeedTests(unittest.TestCase):
                     {'id': '104', 'url': '/lyhyet/short', 'audio': {'exists': False}},
                 ]})
             return upstream_response({'entities': [
-                {'id': '100', 'url': '/pitkat/recording', 'audio': {'exists': True}},
+                {'id': '100', 'url': '/pitkat/recording', 'audio': {'exists': True},
+                 'text': self.article_text},
                 {'id': '101', 'url': '/kulttuuri/text', 'audio': {'exists': False}},
                 {'id': '102', 'url': '/pitkat/denied', 'audio': {'exists': True}},
                 {'id': '103', 'url': '/pitkat/empty', 'audio': {'exists': True}},
@@ -124,6 +126,49 @@ class LongplayFeedTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 400)
                 self.assertEqual(response.headers['Cache-Control'], 'private, no-store')
         self.session.post.assert_not_called()
+
+    def test_article_intro_enriches_description_without_extra_requests(self):
+        self.article_text = {
+            'lead_part_1': '<p>A story about <em>Finland</em> &amp; its people.</p>',
+            'lead_part_2': '<p>More background.&nbsp;What happens next?</p>',
+        }
+        response = self.fetch_feed()
+        self.assertEqual(response.status_code, 200)
+        item = ElementTree.fromstring(response.data).find('channel/item')
+        self.assertEqual(item.findtext('description'), ''.join(self.article_text.values()))
+        self.assertEqual(item.findtext('{' + ITUNES_NS + '}summary'),
+                         'A story about Finland & its people. More background. What happens next?')
+        self.assertEqual(len(item.findall('description')), 1)
+        self.assertEqual(self.session.get.call_count, 7)
+        index_calls = [call for call in self.session.get.call_args_list
+                       if call.args[0] == API_URL + '/nodes']
+        self.assertEqual(len(index_calls), 2)
+        for call in index_calls:
+            self.assertIn('text|lead_part_1', call.kwargs['params']['fields[]'])
+            self.assertIn('text|lead_part_2', call.kwargs['params']['fields[]'])
+
+    def test_empty_intro_keeps_original_description_and_adds_podcast_summary(self):
+        self.article_text = {'lead_part_1': '<p>&nbsp;</p>', 'lead_part_2': None}
+        response = self.fetch_feed()
+        item = ElementTree.fromstring(response.data).find('channel/item')
+        self.assertEqual(item.findtext('description'), '<p>Article summary</p>')
+        self.assertEqual(item.findtext('{' + ITUNES_NS + '}summary'), 'Article summary')
+
+    def test_article_intro_supplies_missing_rss_description(self):
+        self.article_text = {'lead_part_2': '<p>Background &amp; context.</p>'}
+        original_get = self.get_upstream
+
+        def get_without_description(url, **kwargs):
+            if url == FEED_URL:
+                return upstream_response(content=SOURCE_FEED.replace(
+                    b'<description><![CDATA[<p>Article summary</p>]]></description>', b''))
+            return original_get(url, **kwargs)
+
+        self.session.get.side_effect = get_without_description
+        response = self.fetch_feed()
+        item = ElementTree.fromstring(response.data).find('channel/item')
+        self.assertEqual(item.findtext('description'), '<p>Background &amp; context.</p>')
+        self.assertEqual(item.findtext('{' + ITUNES_NS + '}summary'), 'Background & context.')
 
     def test_rejected_login_returns_401_without_exposing_upstream_body(self):
         for status in (400, 401, 403):

@@ -1,5 +1,6 @@
 """Turn Longplay's article RSS into an account-specific audio feed."""
 
+from html.parser import HTMLParser
 from urllib.parse import urljoin, urlsplit
 from xml.etree import ElementTree
 
@@ -53,6 +54,45 @@ class LongplayAuthenticationError(Exception):
 
 class LongplayAudioUnavailableError(Exception):
     pass
+
+
+class _DescriptionText(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.parts = []
+
+    def handle_data(self, data):
+        self.parts.append(data)
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ('p', 'br', 'div', 'li'):
+            self.parts.append(' ')
+
+    def handle_endtag(self, tag):
+        if tag in ('p', 'div', 'li'):
+            self.parts.append(' ')
+
+
+def _description_text(html):
+    parser = _DescriptionText()
+    parser.feed(html)
+    return ' '.join(''.join(parser.parts).split())
+
+
+def _set_article_description(item, node):
+    text = node.get('text') or {}
+    paragraphs = [text.get('lead_part_1'), text.get('lead_part_2')]
+    intro = ''.join(part for part in paragraphs if part and _description_text(part))
+    description = item.find('description')
+    if intro:
+        if description is None:
+            description = ElementTree.SubElement(item, 'description')
+        description.text = intro
+    if description is not None and description.text:
+        summary = item.find('{' + ITUNES_NS + '}summary')
+        if summary is None:
+            summary = ElementTree.SubElement(item, '{' + ITUNES_NS + '}summary')
+        summary.text = _description_text(description.text)
 
 
 def _authenticate(session, username, password):
@@ -113,7 +153,7 @@ def build_longplay_feed(username, password, audio_url_for):
         for content_type in ('story', 'sidetone'):
             response = session.get(API_URL + '/nodes', params={
                 'type': content_type,
-                'fields[]': ['audio|exists'],
+                'fields[]': ['audio|exists', 'text|lead_part_1', 'text|lead_part_2'],
             }, timeout=TIMEOUT)
             response.raise_for_status()
             for node in response.json()['entities']:
@@ -135,6 +175,8 @@ def build_longplay_feed(username, password, audio_url_for):
             if not audio:
                 channel.remove(item)
                 continue
+
+            _set_article_description(item, node)
 
             # Keep the cover as podcast artwork and replace image enclosures.
             for enclosure in item.findall('enclosure'):

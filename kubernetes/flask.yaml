@@ -49,6 +49,13 @@ spec:
           ports:
             - containerPort: 30782
               name: flask
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "10m"
+            limits:
+              memory: "128Mi"
+              cpu: "50m"
           env:
 #            - name: SMTP_HOST
 #              value: 'mail.ardcoras.fi'
@@ -83,7 +90,20 @@ spec:
 #                value: uusirss.ardcoras.fi
 #              port: 80
 ---
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: uusirss-cert
+  namespace: uusirss
+spec:
+  secretName: uusirss-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+  - uusirss.ardcoras.fi
+---
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: flask-route
@@ -92,6 +112,8 @@ spec:
   entryPoints:
     - websecure
     - web
+  tls:
+    secretName: uusirss-tls
   routes:
     - match: Host(`uusirss.ardcoras.fi`)
       kind: Rule

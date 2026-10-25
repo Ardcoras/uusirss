@@ -1,11 +1,16 @@
 # coding: utf-8
 
-from flask import make_response, request
+from flask import make_response, redirect, request, url_for
 from app import app
 import os
 import datetime
 import requests
 from rfeed import *
+from app.longplay import (
+  LongplayAuthenticationError, LongplayAudioUnavailableError,
+  build_longplay_feed, resolve_longplay_audio,
+)
+from xml.etree import ElementTree
 
 @app.route('/rss', methods=['GET'])
 def get_rss():
@@ -49,4 +54,46 @@ def get_rss():
 
   response = make_response(feed.rss(), 200)
   response.mimetype = "text/plain"
+  return response
+
+@app.route('/longplay', methods=['GET'])
+def get_longplay():
+  def fetch(username, password):
+    feed = build_longplay_feed(username, password, lambda node_id: url_for(
+      'get_longplay_audio', node_id=node_id, username=username, password=password,
+      _external=True,
+    ))
+    response = make_response(feed, 200)
+    response.mimetype = 'application/rss+xml'
+    return response
+
+  return _longplay_response(fetch)
+
+
+@app.route('/longplay/audio/<int:node_id>.mp3', methods=['GET', 'HEAD'])
+def get_longplay_audio(node_id):
+  return _longplay_response(lambda username, password: redirect(
+    resolve_longplay_audio(username, password, node_id), code=302,
+  ))
+
+
+def _longplay_response(fetch):
+  username = request.args.get('username')
+  password = request.args.get('password')
+  if not username or not password:
+    response = make_response('Longplay username and password are required.', 400)
+  else:
+    try:
+      response = fetch(username, password)
+    except LongplayAuthenticationError:
+      response = make_response('Longplay authentication failed.', 401)
+    except LongplayAudioUnavailableError:
+      response = make_response('Longplay audio is unavailable for this account.', 404)
+    except requests.Timeout:
+      response = make_response('Longplay request timed out.', 504)
+    except (requests.RequestException, ValueError, KeyError, TypeError, ElementTree.ParseError):
+      response = make_response('Unable to fetch the Longplay feed.', 502)
+
+  response.headers['Cache-Control'] = 'private, no-store'
+  response.headers['Referrer-Policy'] = 'no-referrer'
   return response

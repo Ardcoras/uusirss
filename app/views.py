@@ -85,8 +85,10 @@ def _longplay_response(fetch):
   else:
     try:
       response = fetch(username, password)
-    except LongplayAuthenticationError:
-      response = make_response('Longplay authentication failed.', 401)
+    except LongplayAuthenticationError as error:
+      app.logger.warning('Longplay authentication failed: stage=%s upstream_status=%s oauth_error=%s',
+                         error.stage, error.status, error.oauth_error or 'unknown')
+      response = make_response(str(error) + '\n', 401)
     except LongplayAudioUnavailableError:
       response = make_response('Longplay audio is unavailable for this account.', 404)
     except requests.Timeout:
@@ -96,4 +98,6 @@ def _longplay_response(fetch):
 
   response.headers['Cache-Control'] = 'private, no-store'
   response.headers['Referrer-Policy'] = 'no-referrer'
+  if response.status_code >= 400:
+    response.mimetype = 'text/plain'
   return response

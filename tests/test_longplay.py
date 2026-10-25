@@ -140,6 +140,51 @@ class LongplayFeedTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(ElementTree.fromstring(response.data).findall('channel/item')), 1)
 
+    def test_login_error_identifies_rejected_credentials_without_leaking_details(self):
+        self.session.post.return_value = upstream_response({
+            'error': 'invalid_grant', 'error_description': 'private password and token details',
+        }, 400)
+        with self.assertLogs(app.logger, level='WARNING') as logs:
+            response = self.fetch_feed()
+        self.assertEqual(response.status_code, 401)
+        self.assertIn(b'invalid_grant', response.data)
+        self.assertIn(b'URL-encode', response.data)
+        self.assertNotIn(b'private password', response.data)
+        self.assertIn('stage=login', logs.output[0])
+        self.assertNotIn('secret&+password', '\n'.join(logs.output))
+
+    def test_login_error_identifies_oauth_client_problem(self):
+        self.session.post.return_value = upstream_response({'error': 'invalid_client'}, 401)
+        response = self.fetch_feed()
+        self.assertIn(b'rejected the app OAuth client', response.data)
+        self.assertIn(b'invalid_client', response.data)
+
+    def test_account_error_distinguishes_successful_login(self):
+        self.session.get.return_value = upstream_response({}, 403)
+        self.session.get.side_effect = None
+        response = self.fetch_feed()
+        self.assertEqual(response.status_code, 401)
+        self.assertIn(b'login succeeded, but account lookup failed', response.data)
+        self.assertIn(b'HTTP 403', response.data)
+
+    def test_non_json_login_error_is_safe(self):
+        self.session.post.return_value = upstream_response(content=b'<html>private details</html>', status=403)
+        response = self.fetch_feed()
+        self.assertEqual(response.status_code, 401)
+        self.assertIn(b'failed at login', response.data)
+        self.assertIn(b'HTTP 403', response.data)
+        self.assertNotIn(b'private details', response.data)
+
+    def test_encoded_credentials_reach_login_unchanged(self):
+        password = 'test+with&symbols#and%chars'
+        response = self.client.get('/longplay', query_string={
+            'username': 'reader+rss@example.com', 'password': password,
+        })
+        self.assertEqual(response.status_code, 200)
+        data = self.session.post.call_args.kwargs['data']
+        self.assertEqual(data['username'], 'reader+rss@example.com')
+        self.assertEqual(data['password'], password)
+
     def test_expired_token_on_file_request_returns_401(self):
         self.denied_status = 401
         self.assertEqual(self.fetch_feed().status_code, 401)

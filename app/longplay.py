@@ -18,7 +18,37 @@ ElementTree.register_namespace('atom', ATOM_NS)
 
 
 class LongplayAuthenticationError(Exception):
-    pass
+    def __init__(self, stage, response):
+        self.stage = stage
+        self.status = response.status_code
+        self.oauth_error = None
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = {}
+        # Never expose arbitrary provider messages, response bodies or tokens.
+        error = payload.get('error') if isinstance(payload, dict) else None
+        if isinstance(error, str) and error in {
+            'invalid_grant', 'invalid_client', 'invalid_request',
+            'unauthorized_client', 'unsupported_grant_type', 'access_denied',
+        }:
+            self.oauth_error = error
+
+        detail = 'upstream HTTP ' + str(self.status)
+        if self.oauth_error:
+            detail += ', ' + self.oauth_error
+        if stage == 'login' and self.oauth_error == 'invalid_grant':
+            message = ('Longplay rejected the username or password (' + detail + '). '
+                       'URL-encode both credentials, including +, & and #.')
+        elif stage == 'login' and self.oauth_error in {'invalid_client', 'unauthorized_client'}:
+            message = 'Longplay rejected the app OAuth client (' + detail + ').'
+        elif stage == 'account':
+            message = 'Longplay login succeeded, but account lookup failed (' + detail + ').'
+        elif stage == 'audio':
+            message = 'Longplay account lookup succeeded, but audio authorization failed (' + detail + ').'
+        else:
+            message = 'Longplay authentication failed at ' + stage + ' (' + detail + ').'
+        super().__init__(message)
 
 
 class LongplayAudioUnavailableError(Exception):
@@ -34,13 +64,13 @@ def _authenticate(session, username, password):
         'client_secret': '1q2w3e',
     }, timeout=TIMEOUT)
     if response.status_code in (400, 401, 403):
-        raise LongplayAuthenticationError()
+        raise LongplayAuthenticationError('login', response)
     response.raise_for_status()
     headers = {'Authorization': 'Bearer ' + response.json()['access_token']}
 
     response = session.get(API_URL + '/user', headers=headers, timeout=TIMEOUT)
     if response.status_code in (401, 403):
-        raise LongplayAuthenticationError()
+        raise LongplayAuthenticationError('account', response)
     response.raise_for_status()
     return headers, response.json()['user']['id']
 
@@ -49,7 +79,7 @@ def _fetch_audio(session, node_id, headers, user_id):
     response = session.get(API_URL + '/nodes/' + str(node_id) + '/files',
                            params={'user': user_id}, headers=headers, timeout=TIMEOUT)
     if response.status_code == 401:
-        raise LongplayAuthenticationError()
+        raise LongplayAuthenticationError('audio', response)
     if response.status_code in (403, 404):
         return None
     response.raise_for_status()
